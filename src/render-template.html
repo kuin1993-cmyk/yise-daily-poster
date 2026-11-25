@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>衣色能量海报渲染器</title>
+  <style>
+    @font-face {
+      font-family: 'KaitiSubset';
+      src: url('__KAITI_DATA_URI__') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    body { margin: 0; padding: 0; background: #fff; }
+  </style>
+</head>
+<body>
+  <canvas id="shareCanvas"></canvas>
+  <div id="result"></div>
+  <div id="err"></div>
+  <script>
+    window.__POSTER_DATA__ = __POSTER_DATA_JSON__;
+    window.__ASSETS__ = __ASSETS_JSON__;
+  </script>
+  <script>
+    const PAD = 30, GAP = 16;
+    const SANS = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif';
+    const KAITI = 'KaitiSubset,"STKaiti","KaiTi","Noto Serif CJK SC",serif';
+    const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+    const DEFAULT_TITLE_TONE = {
+      title: 'rgb(74,58,42)',
+      pill: 'rgb(138,112,72)',
+      sub: 'rgb(160,146,128)',
+      hook: 'rgb(122,106,90)',
+      border: 'rgba(184,154,108,0.25)',
+      halo: 'rgba(255,255,255,0.9)'
+    };
+
+    function _rgb2hsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h = 0, s = 0, l = (max + min) / 2;
+      const d = max - min;
+      if (d !== 0) {
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      return { h, s, l };
+    }
+
+    function _hsl2css(h, s, l, a) {
+      s = Math.max(0, Math.min(1, s));
+      l = Math.max(0, Math.min(1, l));
+      h = ((h % 1) + 1) % 1;
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      const hue2rgb = t => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      const r = Math.round(hue2rgb(h + 1 / 3) * 255);
+      const g = Math.round(hue2rgb(h) * 255);
+      const b = Math.round(hue2rgb(h - 1 / 3) * 255);
+      return (a === undefined || a === null) ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+    }
+
+    function _estTagRows(items, areaW, fontSize, mr) {
+      if (!items || !items.length) return 1;
+      let rows = 1, lineW = 0;
+      for (const it of items) {
+        const tagW = it.length * fontSize + mr;
+        if (lineW + tagW > areaW && lineW > 0) {
+          rows++;
+          lineW = tagW;
+        } else {
+          lineW += tagW;
+        }
+      }
+      return rows;
+    }
+
+    function _calcCanvasHeight(d) {
+      const P = PAD, G = GAP;
+      const safeTop = 80, hdrH = 238, dcH = 220;
+      const yjList = d.yiItems || [], jiList = d.jiItems || [];
+      const yjPadY = 22, yjCircle = 44, yjLineGap = 18;
+      const yjTagFS = 26, yjTagLH = 38, yjTagMR = 14, yjCardPX = 14;
+      const yjTagAreaW = (750 - P * 2) - yjCircle - 18 - yjCardPX * 2;
+      const yiRows = _estTagRows(yjList, yjTagAreaW, yjTagFS, yjTagMR);
+      const jiRows = _estTagRows(jiList, yjTagAreaW, yjTagFS, yjTagMR);
+      const yiLineH = Math.max(yjCircle, yiRows * yjTagLH);
+      const jiLineH = Math.max(yjCircle, jiRows * yjTagLH);
+      const yjH = yjPadY + yiLineH + yjLineGap + jiLineH + yjPadY;
+      const cCardH = 36 + 80 * 5;
+      const weekH = 152, h_crystal = 280, fortH = 220, tipsH = 70, tmrH = 128, bottomH = 90;
+      return safeTop + hdrH + G + dcH + G + yjH + G + G + cCardH + G + weekH + G + h_crystal + G + fortH + G + G + G + G + tipsH + G + tmrH + G + bottomH;
+    }
+
+    function _strokeRoundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    }
+
+    function _drawRoundRectBG(ctx, x, y, w, h, r, fillColor) {
+      _strokeRoundRect(ctx, x, y, w, h, r);
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+    }
+
+    function _pickTitleTone(ctx, top, bottom, scale) {
+      try {
+        const sw = Math.round(750 * scale);
+        const sh = Math.round((bottom - top) * scale);
+        const data = ctx.getImageData(0, Math.round(top * scale), sw, sh).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < data.length; i += 16) {
+          if (data[i + 3] < 200) continue;
+          r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+        }
+        if (!n) return DEFAULT_TITLE_TONE;
+        r /= n; g /= n; b /= n;
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const { h, s } = _rgb2hsl(r, g, b);
+        if (lum < 0.62) {
+          return {
+            title: _hsl2css(h, Math.min(s * 0.85, 0.45), 0.93),
+            pill: _hsl2css(h, Math.min(s * 0.7, 0.38), 0.90),
+            sub: _hsl2css(h, Math.min(s * 0.6, 0.32), 0.86),
+            hook: _hsl2css(h, Math.min(s * 0.55, 0.30), 0.84),
+            border: _hsl2css(h, Math.min(s, 0.5), 0.72, 0.45),
+            halo: 'rgba(40,28,18,0.5)'
+          };
+        }
+        return {
+          title: _hsl2css(h, Math.min(Math.max(s, 0.30), 0.52), 0.26),
+          pill: _hsl2css(h, Math.min(Math.max(s, 0.28), 0.46), 0.34),
+          sub: _hsl2css(h, Math.min(Math.max(s, 0.24), 0.42), 0.42),
+          hook: _hsl2css(h, Math.min(Math.max(s, 0.22), 0.40), 0.46),
+          border: _hsl2css(h, Math.min(s, 0.5), 0.45, 0.35),
+          halo: 'rgba(255,255,255,0.9)'
+        };
+      } catch {
+        return DEFAULT_TITLE_TONE;
+      }
+    }
+
+    function _drawCompass(ctx, cx, cy, r) {
+      const outerGrad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+      outerGrad.addColorStop(0, '#f8f3eb');
+      outerGrad.addColorStop(1, '#ebe4d8');
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.fillStyle = outerGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(184,154,108,0.35)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+      ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+      ctx.strokeStyle = 'rgba(184,154,108,0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const ir = r * 0.68;
+      const innerGrad = ctx.createLinearGradient(cx - ir, cy - ir, cx + ir, cy + ir);
+      innerGrad.addColorStop(0, '#f0ebe3');
+      innerGrad.addColorStop(1, '#e5ddd0');
+      ctx.beginPath();
+      ctx.arc(cx, cy, ir, 0, 2 * Math.PI);
+      ctx.fillStyle = innerGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(184,154,108,0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = 'bold 18px Georgia,serif';
+      ctx.fillStyle = '#b8503c';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('N', cx, cy - ir + 16);
+      ctx.font = '15px Georgia,serif';
+      ctx.fillStyle = 'rgba(138,112,72,0.45)';
+      ctx.fillText('S', cx, cy + ir - 14);
+      ctx.fillText('E', cx + ir - 12, cy);
+      ctx.fillText('W', cx - ir + 12, cy);
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - ir + 24);
+      ctx.lineTo(cx - 6, cy - ir + 44);
+      ctx.lineTo(cx + 6, cy - ir + 44);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(192,64,64,0.8)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + ir - 24);
+      ctx.lineTo(cx - 5, cy + ir - 40);
+      ctx.lineTo(cx + 5, cy + ir - 40);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(184,154,108,0.3)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+      const centerGrad = ctx.createRadialGradient(cx - 1, cy - 1, 1, cx, cy, 5);
+      centerGrad.addColorStop(0, '#d4b87a');
+      centerGrad.addColorStop(1, '#a08850');
+      ctx.fillStyle = centerGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(138,112,72,0.3)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function loadImg(src) {
+      return new Promise(resolve => {
+        if (!src) return resolve(null);
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    }
+
+    async function render() {
+      await document.fonts.ready;
+      const d = window.__POSTER_DATA__;
+      const A = window.__ASSETS__;
+
+      const [qrImg, dressImg, bgImg, ...crystalImgs] = await Promise.all([
+        loadImg(A.qr),
+        loadImg(A.dress),
+        loadImg(A.bg),
+        ...(A.crystals || []).map(src => loadImg(src))
+      ]);
+
+      const totalH = _calcCanvasHeight(d);
+      const scale = 2; // 1500px 宽 Retina 高清输出
+      const canvas = document.getElementById('shareCanvas');
+      canvas.width = 750 * scale;
+      canvas.height = Math.round(totalH * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+      const P = PAD, G = GAP, CW = 750 - P * 2;
+      let y = 80;
+      const bgH = totalH;
+
+      // 0. 全局背景
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 750, bgH);
+      if (bgImg) {
+        const s = 750 / bgImg.width;
+        const drawH = bgImg.height * s;
+        ctx.drawImage(bgImg, 0, 0, 750, drawH);
+        if (drawH < bgH) {
+          let fadeH = Math.round(drawH * 0.32);
+          fadeH = Math.max(40, Math.min(280, fadeH));
+          const fadeTop = Math.max(0, drawH - fadeH);
+          const fadeGrad = ctx.createLinearGradient(0, fadeTop, 0, drawH);
+          fadeGrad.addColorStop(0, 'rgba(255,255,255,0)');
+          fadeGrad.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+          fadeGrad.addColorStop(1, 'rgba(255,255,255,1)');
+          ctx.fillStyle = fadeGrad;
+          ctx.fillRect(0, fadeTop, 750, fadeH);
+        }
+      } else {
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, bgH);
+        bgGrad.addColorStop(0, '#ede4d3');
+        bgGrad.addColorStop(0.4, '#fdfaf6');
+        bgGrad.addColorStop(1, '#e8dfcd');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 750, bgH);
+      }
+
+      ctx.fillStyle = 'rgba(245, 235, 218, 0.28)';
+      ctx.fillRect(0, 0, 750, bgH);
+
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      const rad1 = ctx.createRadialGradient(120, 200, 0, 120, 200, 380);
+      rad1.addColorStop(0, 'rgba(212, 175, 130, 0.45)');
+      rad1.addColorStop(1, 'rgba(212, 175, 130, 0)');
+      ctx.fillStyle = rad1; ctx.fillRect(0, 0, 750, bgH);
+
+      const rad2 = ctx.createRadialGradient(640, 900, 0, 640, 900, 420);
+      rad2.addColorStop(0, 'rgba(196, 154, 140, 0.3)');
+      rad2.addColorStop(1, 'rgba(196, 154, 140, 0)');
+      ctx.fillStyle = rad2; ctx.fillRect(0, 0, 750, bgH);
+
+      const rad3 = ctx.createRadialGradient(380, bgH - 200, 0, 380, bgH - 200, 380);
+      rad3.addColorStop(0, 'rgba(184, 154, 108, 0.25)');
+      rad3.addColorStop(1, 'rgba(184, 154, 108, 0)');
+      ctx.fillStyle = rad3; ctx.fillRect(0, 0, 750, bgH);
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(138, 112, 72, 0.04)';
+      for (let dy = 30; dy < bgH; dy += 36) {
+        for (let dx = 30; dx < 750; dx += 36) {
+          ctx.beginPath(); ctx.arc(dx, dy, 1, 0, 2 * Math.PI); ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      // 1. 头部
+      y += 12;
+      const tone = _pickTitleTone(ctx, 60, 300, scale);
+      const pillW = 240, pillH = 48, pillX = (750 - pillW) / 2;
+      ctx.fillStyle = 'rgba(255,255,255,0.30)';
+      _strokeRoundRect(ctx, pillX, y, pillW, pillH, 24);
+      ctx.fill();
+      ctx.strokeStyle = tone.border; ctx.lineWidth = 1; ctx.stroke();
+
+      ctx.save();
+      ctx.shadowColor = tone.halo; ctx.shadowBlur = 8;
+      ctx.fillStyle = tone.pill; ctx.font = `22px ${SANS}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('穿 搭 日 报', 375, y + pillH / 2);
+      ctx.restore();
+      y += pillH + 18;
+
+      ctx.save();
+      ctx.shadowColor = tone.halo; ctx.shadowBlur = 14;
+      ctx.font = `bold 58px ${KAITI}`; ctx.fillStyle = tone.title;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('衣色能量', 375, y + 36);
+      ctx.restore();
+      y += 78;
+
+      ctx.save();
+      ctx.shadowColor = tone.halo; ctx.shadowBlur = 8;
+      ctx.font = `20px ${SANS}`; ctx.fillStyle = tone.sub;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('顺 势 而 为', 375, y + 20);
+      ctx.restore();
+      y += 38;
+
+      const hookY = y + 16;
+      ctx.save();
+      ctx.strokeStyle = tone.border; ctx.lineWidth = 1;
+      const hookText = '颜色影响心情与状态 · 每天换一个对的颜色';
+      ctx.font = `22px ${SANS}`;
+      const hookW = ctx.measureText(hookText).width;
+      const hx1 = 375 - hookW / 2 - 18, hx2 = 375 + hookW / 2 + 18;
+      ctx.beginPath();
+      ctx.moveTo(hx1 - 46, hookY); ctx.lineTo(hx1, hookY);
+      ctx.moveTo(hx2, hookY); ctx.lineTo(hx2 + 46, hookY);
+      ctx.stroke();
+      ctx.shadowColor = tone.halo; ctx.shadowBlur = 8;
+      ctx.fillStyle = tone.hook; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(hookText, 375, hookY);
+      ctx.restore();
+      y += 44;
+
+      // 2. 日期卡片
+      y += G;
+      const dcCardH = 220;
+      _drawRoundRectBG(ctx, P, y, CW, dcCardH, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, CW, dcCardH, 18); ctx.stroke();
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const dcContentH = 30 + 12 + 36 + 10 + 22 + 16 + 22;
+      const dcBase = y + (dcCardH - dcContentH) / 2;
+
+      ctx.font = `500 30px ${SANS}`; ctx.fillStyle = 'rgba(58,42,26,0.55)';
+      const dateStr = `${d.year}.${d.month}.${d.day}`;
+      ctx.fillText(dateStr, P + 28, dcBase);
+      const dateW = ctx.measureText(dateStr).width;
+      ctx.font = `500 22px ${SANS}`; ctx.fillStyle = '#b0a090';
+      ctx.fillText(d.weekDay, P + 28 + dateW + 12, dcBase + 4);
+
+      const dcL2 = dcBase + 42;
+      ctx.font = `bold 36px ${KAITI}`; ctx.fillStyle = '#5a4a3a';
+      ctx.fillText(d.lunarDate, P + 28, dcL2);
+
+      const dcL3 = dcL2 + 46;
+      ctx.font = `500 22px ${KAITI}`; ctx.fillStyle = '#7a6a5a';
+      ctx.fillText(`${d.nianGanZhi}年 · ${d.monthGanZhi}月 · ${d.riGanZhi}日`, P + 28, dcL3);
+
+      const dcL4 = dcL3 + 38;
+      ctx.font = `bold 22px ${KAITI}`; ctx.fillStyle = '#8a7048';
+      const zxText = `【属${d.zodiacAnimal}】`;
+      ctx.fillText(zxText, P + 28, dcL4);
+      const zxW = ctx.measureText(zxText).width;
+      ctx.font = `500 22px ${KAITI}`; ctx.fillStyle = '#a89880';
+      ctx.fillText(`${d.weekDay}第${d.weekOfYear}周`, P + 28 + zxW + 10, dcL4);
+
+      // 五行球
+      const orbR = 44, orbitR = 64, orbCx = P + CW - 30 - orbitR, orbCy = y + dcCardH / 2;
+      const orbGrad = ctx.createRadialGradient(orbCx - 14, orbCy - 14, 5, orbCx, orbCy, orbR);
+      orbGrad.addColorStop(0, 'rgba(255,255,255,0.7)');
+      orbGrad.addColorStop(1, 'rgba(184,154,108,0.18)');
+      ctx.beginPath(); ctx.arc(orbCx, orbCy, orbR, 0, 2 * Math.PI);
+      ctx.fillStyle = orbGrad; ctx.fill();
+      ctx.strokeStyle = 'rgba(184,154,108,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      const wxChars = ['金', '木', '水', '火', '土'];
+      const wxPts = wxChars.map((_, wi) => {
+        const wAng = (wi * 72 - 90) * Math.PI / 180;
+        return { x: orbCx + orbitR * Math.cos(wAng), y: orbCy + orbitR * Math.sin(wAng) };
+      });
+      ctx.strokeStyle = 'rgba(184,154,108,0.4)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(wxPts[0].x, wxPts[0].y);
+      for (let li = 1; li < wxPts.length; li++) ctx.lineTo(wxPts[li].x, wxPts[li].y);
+      ctx.closePath(); ctx.stroke();
+
+      ctx.font = `bold 16px ${KAITI}`; ctx.fillStyle = '#8a7048';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      wxPts.forEach((pt, idx) => ctx.fillText(wxChars[idx], pt.x, pt.y));
+      ctx.font = `bold 28px ${KAITI}`; ctx.fillText(d.wuxing, orbCx, orbCy);
+      y += dcCardH + G;
+
+      // 2.5 每日宜忌
+      const yjItems = d.yiItems || [], jItems = d.jiItems || [];
+      const yjCircle = 44, yjLineGap = 18, yjPadY = 22, yjCardPX = 14;
+      const yjTagFS = 26, yjTagLH = 38, yjTagMR = 14, yjCircleMR = 18;
+      const yjTagAreaW = CW - yjCircle - yjCircleMR - yjCardPX * 2;
+      const yiLineH = Math.max(yjCircle, _estTagRows(yjItems, yjTagAreaW, yjTagFS, yjTagMR) * yjTagLH);
+      const jiLineH = Math.max(yjCircle, _estTagRows(jItems, yjTagAreaW, yjTagFS, yjTagMR) * yjTagLH);
+      const yjCardH = yjPadY + yiLineH + yjLineGap + jiLineH + yjPadY;
+
+      _drawRoundRectBG(ctx, P, y, CW, yjCardH, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, CW, yjCardH, 18); ctx.stroke();
+
+      function drawYiJiLine(items, baseY, isYi) {
+        const cx = P + yjCardPX + yjCircle / 2, cy = baseY + yjCircle / 2;
+        const grad = ctx.createLinearGradient(cx - 22, cy - 22, cx + 22, cy + 22);
+        if (isYi) { grad.addColorStop(0, '#5a8a5a'); grad.addColorStop(1, '#4a7a4a'); }
+        else { grad.addColorStop(0, '#c47060'); grad.addColorStop(1, '#b06050'); }
+        ctx.beginPath(); ctx.arc(cx, cy, yjCircle / 2, 0, Math.PI * 2);
+        ctx.fillStyle = grad; ctx.fill();
+
+        ctx.font = `bold 26px ${KAITI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff'; ctx.fillText(isYi ? '宜' : '忌', cx, cy);
+
+        const tagStartX = P + yjCardPX + yjCircle + yjCircleMR;
+        const tagEndX = P + CW - yjCardPX;
+        ctx.font = `26px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = isYi ? '#5a8a5a' : '#c47060';
+        let curX = tagStartX, curY = baseY + yjTagLH / 2;
+        for (const it of items) {
+          const tw = ctx.measureText(it).width;
+          if (curX + tw > tagEndX && curX > tagStartX) {
+            curX = tagStartX; curY += yjTagLH;
+          }
+          ctx.fillText(it, curX, curY);
+          curX += tw + yjTagMR;
+        }
+      }
+      drawYiJiLine(yjItems, y + yjPadY, true);
+      drawYiJiLine(jItems, y + yjPadY + yiLineH + yjLineGap, false);
+      y += yjCardH + G;
+
+      // 3. 衣色推荐卡片
+      const cRowH = 80, cCardH = 36 + cRowH * 5;
+      _drawRoundRectBG(ctx, P, y, CW, cCardH, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, CW, cCardH, 18); ctx.stroke();
+
+      let ry = y + 8;
+      const levels = [
+        { label: '非常好：', colors: d.bestColors, hex: d.bestHex, tag: d.bestTag },
+        { label: '很好：', colors: d.goodColors, hex: d.goodHex, tag: d.goodTag },
+        { label: '还行：', colors: d.okColors, hex: d.okHex, tag: d.okTag },
+        { label: '不推荐：', colors: d.badColors, hex: d.badHex, tag: d.badTag },
+        { label: '非常不推荐：', colors: d.worstColors, hex: d.worstHex, tag: d.worstTag }
+      ];
+      levels.forEach((cv, li) => {
+        const rowTop = ry, midY = ry + cRowH / 2, iconS = 56, iconLeft = P + 10;
+        if (dressImg) ctx.drawImage(dressImg, iconLeft, midY - iconS / 2, iconS, iconS);
+        const textX = iconLeft + iconS + 28;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.font = `600 28px ${SANS}`; ctx.fillStyle = '#4a3a2a';
+        ctx.fillText(cv.label, textX, rowTop + 28);
+        const labelW = ctx.measureText(cv.label).width;
+        ctx.font = `26px ${SANS}`; ctx.fillStyle = '#8a7a6a';
+        ctx.fillText(cv.colors, textX + labelW + 8, rowTop + 28);
+
+        const dotX = textX + 8, dotY = rowTop + 58;
+        cv.hex.slice(0, 4).forEach((hx, di) => {
+          ctx.beginPath(); ctx.arc(dotX + di * 38, dotY, 13, 0, 2 * Math.PI);
+          ctx.fillStyle = hx; ctx.fill();
+          ctx.strokeStyle = 'rgba(90,74,58,0.2)'; ctx.lineWidth = 1.5; ctx.stroke();
+        });
+
+        if (cv.tag) {
+          const tagText = cv.tag + ' 🪷';
+          ctx.font = `22px ${SANS},${EMOJI_FONT}`;
+          const tw = ctx.measureText(tagText).width + 40;
+          const tx = P + CW - tw - 10;
+          ctx.fillStyle = 'rgba(184,154,108,0.14)';
+          _strokeRoundRect(ctx, tx, midY - 18, tw, 36, 18); ctx.fill();
+          ctx.fillStyle = '#8a7048'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(tagText, tx + tw / 2, midY);
+          ctx.textAlign = 'left';
+        }
+
+        if (li < levels.length - 1) {
+          ctx.beginPath();
+          ctx.moveTo(P + 8, ry + cRowH - 1); ctx.lineTo(P + CW - 8, ry + cRowH - 1);
+          ctx.strokeStyle = 'rgba(139,115,85,0.07)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+        ry += cRowH;
+      });
+      y += cCardH + G;
+
+      // 3.5 本周衣色轨迹
+      const weekH = 152;
+      _drawRoundRectBG(ctx, P, y, CW, weekH, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, CW, weekH, 18); ctx.stroke();
+
+      ctx.font = `bold 24px ${SANS}`; ctx.fillStyle = '#8a7048';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('本周衣色轨迹', P + 22, y + 30);
+
+      const badgeTxt = '大众通用 · 每日主色';
+      ctx.font = `20px ${SANS}`;
+      const stW = ctx.measureText(badgeTxt).width + 28;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      _strokeRoundRect(ctx, P + CW - stW - 18, y + 14, stW, 32, 16); ctx.fill();
+      ctx.strokeStyle = 'rgba(184,154,108,0.28)'; ctx.stroke();
+      ctx.fillStyle = '#8a7048'; ctx.textAlign = 'center';
+      ctx.fillText(badgeTxt, P + CW - stW - 18 + stW / 2, y + 30);
+
+      const weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
+      const colW = CW / 7;
+      d.weekColors.forEach((wc, wi3) => {
+        const cx3 = P + colW * (wi3 + 0.5), cy3 = y + 84;
+        if (wc.isSel) {
+          ctx.beginPath(); ctx.arc(cx3, cy3, 24, 0, 2 * Math.PI);
+          ctx.strokeStyle = '#b89a6c'; ctx.lineWidth = 2.5; ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(cx3, cy3, wc.isSel ? 19 : 16, 0, 2 * Math.PI);
+        ctx.fillStyle = wc.hex; ctx.fill();
+        ctx.strokeStyle = 'rgba(90,74,58,0.22)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.font = `${wc.isSel ? '600 ' : ''}20px ${SANS}`;
+        ctx.fillStyle = wc.isSel ? '#6b5236' : '#a89880';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(weekLabels[wi3], cx3, y + 122);
+      });
+      y += weekH + G;
+
+      // 4. 水晶 + 二维码
+      const h_crystal = 280, cardGap = 16, eachW = Math.floor((CW - cardGap) / 2);
+      _drawRoundRectBG(ctx, P, y, eachW, h_crystal, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, eachW, h_crystal, 18); ctx.stroke();
+
+      const qrCardX = P + eachW + cardGap;
+      _drawRoundRectBG(ctx, qrCardX, y, eachW, h_crystal, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      _strokeRoundRect(ctx, qrCardX, y, eachW, h_crystal, 18); ctx.stroke();
+
+      ctx.font = `bold 24px ${KAITI},${EMOJI_FONT}`; ctx.fillStyle = '#8a7048';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('✨ 宜佩戴水晶', P + eachW / 2, y + 30);
+      ctx.beginPath(); ctx.moveTo(P + 20, y + 56); ctx.lineTo(P + eachW - 20, y + 56);
+      ctx.strokeStyle = 'rgba(184,154,108,0.14)'; ctx.lineWidth = 1; ctx.stroke();
+
+      const ciCount = Math.min(d.crystals.length, 3);
+      const ciCellW = (eachW - 32) / ciCount, ciCellH = h_crystal - 86;
+      d.crystals.slice(0, ciCount).forEach((item, cii) => {
+        const ccx = P + 16 + ciCellW * cii + ciCellW / 2;
+        const ccy = y + 72 + ciCellH / 2;
+        const cImg = crystalImgs[cii];
+        if (cImg) {
+          const cS = Math.max(60, Math.min(96, Math.floor(ciCellW) - 16));
+          const cCY = ccy - 48;
+          ctx.beginPath(); ctx.arc(ccx, cCY, cS / 2 + 6, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(184,154,108,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.drawImage(cImg, ccx - cS / 2, cCY - cS / 2, cS, cS);
+        }
+        ctx.font = `bold 24px ${KAITI}`; ctx.fillStyle = '#4a3a2a';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(item.name || '', ccx, ccy + 22);
+        ctx.font = `20px ${SANS}`; ctx.fillStyle = '#a89880';
+        ctx.fillText(item.effect || '', ccx, ccy + 58);
+      });
+
+      if (qrImg) {
+        const qrSize = 180, gap = 28, vtext = '长按发现好水晶', lineH = 24, vCharW = 20;
+        const totalBlockW = qrSize + gap + vCharW;
+        const qrX = qrCardX + (eachW - totalBlockW) / 2;
+        const qrY = y + (h_crystal - qrSize) / 2;
+        ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+        ctx.font = `bold 20px ${KAITI}`; ctx.fillStyle = '#8a7048';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const vx = qrX + qrSize + gap + vCharW / 2;
+        const vyStart = y + (h_crystal - vtext.length * lineH) / 2 + lineH / 2;
+        for (let vi = 0; vi < vtext.length; vi++) ctx.fillText(vtext[vi], vx, vyStart + vi * lineH);
+      }
+      y += h_crystal + G;
+
+      // 5. 方位 | 罗盘 | 生肖
+      const fw = Math.floor((CW - 32) / 3), fh = 220;
+      _drawRoundRectBG(ctx, P, y, fw, fh, 16, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; _strokeRoundRect(ctx, P, y, fw, fh, 16); ctx.stroke();
+      ctx.font = `600 22px ${SANS}`; ctx.fillStyle = '#8a7048'; ctx.textAlign = 'center';
+      ctx.fillText('方位', P + fw / 2, y + 34);
+      ctx.beginPath(); ctx.moveTo(P + 16, y + 48); ctx.lineTo(P + fw - 16, y + 48);
+      ctx.strokeStyle = 'rgba(184,154,108,0.14)'; ctx.lineWidth = 1; ctx.stroke();
+
+      const fiLabels = ['财位', '福位', '喜位', '顺位'];
+      const fiValues = [d.caishen, d.fushen, d.xishen, d.guiren];
+      let fiY = y + 68;
+      fiLabels.forEach((lb, idx) => {
+        ctx.textAlign = 'left'; ctx.font = `22px ${SANS}`; ctx.fillStyle = '#8a7a6a';
+        ctx.fillText(lb, P + 20, fiY);
+        ctx.textAlign = 'right'; ctx.font = `500 25px ${SANS}`; ctx.fillStyle = '#4a3a2a';
+        ctx.fillText(fiValues[idx], P + fw - 20, fiY);
+        fiY += 36;
+      });
+
+      const compassX = P + fw + cardGap;
+      _drawRoundRectBG(ctx, compassX, y, fw, fh, 16, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; _strokeRoundRect(ctx, compassX, y, fw, fh, 16); ctx.stroke();
+      _drawCompass(ctx, compassX + fw / 2, y + fh / 2, 80);
+
+      const sxX = compassX + fw + cardGap;
+      _drawRoundRectBG(ctx, sxX, y, fw, fh, 16, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; _strokeRoundRect(ctx, sxX, y, fw, fh, 16); ctx.stroke();
+      ctx.font = `600 22px ${SANS}`; ctx.fillStyle = '#8a7048'; ctx.textAlign = 'center';
+      ctx.fillText('生肖', sxX + fw / 2, y + 34);
+      ctx.beginPath(); ctx.moveTo(sxX + 16, y + 48); ctx.lineTo(sxX + fw - 16, y + 48);
+      ctx.strokeStyle = 'rgba(184,154,108,0.14)'; ctx.lineWidth = 1; ctx.stroke();
+
+      ctx.textAlign = 'left';
+      ctx.font = `22px ${SANS}`; ctx.fillStyle = '#8a7a6a'; ctx.fillText('合拍生肖', sxX + 20, y + 70);
+      ctx.font = `32px ${EMOJI_FONT},${SANS}`; ctx.fillStyle = '#4a3a2a'; ctx.fillText(d.sxLucky, sxX + 20, y + 108);
+      ctx.font = `22px ${SANS}`; ctx.fillStyle = '#8a7a6a'; ctx.fillText('留意生肖', sxX + 20, y + 148);
+      ctx.font = `32px ${EMOJI_FONT},${SANS}`; ctx.fillStyle = '#c47060'; ctx.fillText(d.sxWarn, sxX + 20, y + 188);
+      y += fh + G;
+
+      // 6. 穿衣建议
+      ctx.font = `500 24px ${KAITI},${EMOJI_FONT}`; ctx.fillStyle = '#7a6a5a';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`—  ${d.tipsTitle}  —`, 375, y + 36);
+      y += 70 + G;
+
+      // 6.5 明日预告
+      const tmrH = 128;
+      _drawRoundRectBG(ctx, P, y, CW, tmrH, 18, 'rgba(255,255,255,0.8)');
+      ctx.strokeStyle = 'rgba(184,154,108,0.28)'; ctx.lineWidth = 1;
+      _strokeRoundRect(ctx, P, y, CW, tmrH, 18); ctx.stroke();
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.font = `22px ${SANS},${EMOJI_FONT}`; ctx.fillStyle = '#a89880';
+      ctx.fillText(`🌙  明日预告 · ${d.tomorrow.month}月${d.tomorrow.day}日 ${d.tomorrow.weekDay}`, P + 24, y + 28);
+      ctx.font = `bold 34px ${SANS}`; ctx.fillStyle = '#4a3a2a';
+      ctx.fillText(`${d.tomorrow.name}系`, P + 24, y + 68);
+      d.tomorrow.hex.forEach((hx, thi) => {
+        ctx.beginPath();
+        ctx.arc(P + CW - 30 - (d.tomorrow.hex.length - 1 - thi) * 40, y + 68, 15, 0, 2 * Math.PI);
+        ctx.fillStyle = hx; ctx.fill();
+        ctx.strokeStyle = 'rgba(90,74,58,0.2)'; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+      ctx.font = `20px ${SANS}`; ctx.fillStyle = '#a89880';
+      ctx.fillText('明天的颜色已经替你配好了 · 明天来看看', P + 24, y + 104);
+      y += tmrH + G;
+
+      // 7. 底部品牌落款
+      const lineY = y + 10;
+      const lineGradL = ctx.createLinearGradient(P + 60, lineY, 375, lineY);
+      lineGradL.addColorStop(0, 'rgba(184,154,108,0)');
+      lineGradL.addColorStop(0.5, 'rgba(184,154,108,0.6)');
+      lineGradL.addColorStop(1, 'rgba(184,154,108,0.7)');
+      ctx.strokeStyle = lineGradL; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(P + 60, lineY); ctx.lineTo(375, lineY); ctx.stroke();
+
+      const lineGradR = ctx.createLinearGradient(375, lineY, P + CW - 60, lineY);
+      lineGradR.addColorStop(0, 'rgba(184,154,108,0.7)');
+      lineGradR.addColorStop(0.5, 'rgba(184,154,108,0.6)');
+      lineGradR.addColorStop(1, 'rgba(184,154,108,0)');
+      ctx.strokeStyle = lineGradR;
+      ctx.beginPath(); ctx.moveTo(375, lineY); ctx.lineTo(P + CW - 60, lineY); ctx.stroke();
+
+      ctx.font = `bold 22px ${KAITI}`; ctx.fillStyle = '#8a7048';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('—  衣 色 能 量  ·  五 行 穿 搭  日 报  —', 375, y + 40);
+      ctx.font = `bold 20px ${KAITI}`;
+      ctx.fillText('微信搜索「衣色穿搭小助手」获取更多信息', 375, y + 70);
+
+      // 导出高清 JPG（质量 0.92，体积小 10 倍，iPhone 快捷指令秒下载）
+      document.getElementById('result').textContent = canvas.toDataURL('image/jpeg', 0.92);
+    }
+
+    render().catch(err => {
+      document.getElementById('err').textContent = String(err && err.stack || err);
+    });
+  </script>
+</body>
+</html>
