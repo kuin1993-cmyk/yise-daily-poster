@@ -71,14 +71,19 @@ function buildPreviewHtml(meta) {
 <body>
   <div class="wrap">
     <h1>衣色能量 · 今日发圈素材</h1>
-    <div class="sub">${esc(meta.date)} ${esc(meta.weekDay)} · 农历${esc(meta.lunar)} · 五行属${esc(meta.wuxing)}</div>
+    <div class="sub">${esc(meta.date)} ${esc(meta.weekDay)} · 农历${esc(meta.lunar)} · 五行属${esc(meta.wuxing)} · 文案来源：${meta.caption_source === 'ai' ? 'AI 现写' : '精选文案库'}</div>
     <div class="card">
-      <div class="label">📱 iPhone 14 文案</div>
+      <div class="label">📱 iPhone 11 文案（温柔闺蜜分享风）</div>
+      <pre id="c11">${esc(meta.caption_11)}</pre>
+      <button onclick="copyText('c11', this)">一键复制 11 文案</button>
+    </div>
+    <div class="card">
+      <div class="label">📱 iPhone 14 文案（极简高级风）</div>
       <pre id="c14">${esc(meta.caption_14)}</pre>
       <button onclick="copyText('c14', this)">一键复制 14 文案</button>
     </div>
     <div class="card">
-      <div class="label">📱 iPhone 17 文案</div>
+      <div class="label">📱 iPhone 17 文案（水晶手串软广风）</div>
       <pre id="c17">${esc(meta.caption_17)}</pre>
       <button onclick="copyText('c17', this)">一键复制 17 文案</button>
     </div>
@@ -176,8 +181,10 @@ async function main() {
       lunar: payload.lunarDate,
       wuxing: payload.wuxing,
       best_colors: payload.bestColors,
+      caption_11: payload.caption_11,
       caption_14: payload.caption_14,
       caption_17: payload.caption_17,
+      caption_source: payload.caption_source,
       image_url: baseUrl ? `${baseUrl}/today.jpg?v=${payload.dateStr}` : `./today.jpg?v=${payload.dateStr}`,
       updated_at: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
     };

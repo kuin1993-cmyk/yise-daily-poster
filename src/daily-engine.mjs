@@ -1,4 +1,5 @@
 // 衣色能量 · 大众通用版每日计算引擎（1:1 复用小程序 pages/index/index.js 逻辑）
+import { generateCaptions } from './caption-generator.mjs';
 
 const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
@@ -376,31 +377,6 @@ export function getBeijingDateParts(customDateStr) {
   return { y, m, d };
 }
 
-function buildCaptions(d) {
-  const crNames = d.crystals.map(c => c.name).join(' / ');
-  const dateLabel = `${d.month}月${d.day}日`;
-  const seed = d.year * 10000 + d.month * 100 + d.day;
-
-  const pool14 = [
-    `✨ ${dateLabel} ${d.weekDay}｜今日五行属「${d.wuxing}」\n今日首推穿：${d.bestColors}\n搭配水晶：${crNames} 💎\n每天换一个对的颜色，状态自然顺起来～\n（保存图片看完整色卡 & 黄历宜忌👇）`,
-    `🌿 早安｜${dateLabel} 农历${d.lunarDate}\n今天穿【${d.bestColors}】最提气色，配 ${crNames} 刚刚好✨\n今日状态关键词：${d.bestTag}，祝你今天顺心自在～`,
-    `🎨 ${dateLabel} 每日穿搭色卡已更新！\n今日属「${d.wuxing}」：首推 ${d.bestColors}，次推 ${d.goodColors}\n宜佩戴：${crNames} ✨\n不知道穿什么颜色，直接照着图里选就对了～`
-  ];
-
-  const pool17 = [
-    `☀️ ${dateLabel} ${d.weekDay} · 农历${d.lunarDate}\n今日穿衣主色：${d.bestColors}（${d.bestTag}）\n出门戴一串 ${crNames}，把今天的好状态拉满✨`,
-    `💫 今天穿什么颜色？答案在图里啦👇\n${dateLabel} 五行属「${d.wuxing}」\n首选色系：${d.bestColors}\n推荐搭配水晶：${crNames}\n扫码还能查每日黄历和更多配色哦～`,
-    `🌸 ${dateLabel} 穿搭灵感｜属「${d.wuxing}」的一天\n建议穿：${d.bestColors}，尽量避开 ${d.worstColors}\n今日好搭档：${crNames} 💎\n收藏一下，明天还有新的色卡更新～`
-  ];
-
-  const idx14 = _hash32(seed) % pool14.length;
-  const idx17 = _hash32(seed + 7919) % pool17.length;
-  return {
-    caption_14: pool14[idx14],
-    caption_17: pool17[idx17]
-  };
-}
-
 export async function buildDailyPayload(customDateStr) {
   const { y, m, d } = getBeijingDateParts(customDateStr);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
@@ -496,6 +472,6 @@ export async function buildDailyPayload(customDateStr) {
     }
   };
 
-  const captions = buildCaptions(payload);
+  const captions = await generateCaptions(payload);
   return { ...payload, ...captions };
 }

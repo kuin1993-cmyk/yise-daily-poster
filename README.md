@@ -45,28 +45,38 @@ node scripts/generate.mjs 2026-11-25
 
 ---
 
-## 三、iPhone 14 & 17 桌面一键按钮配置（快捷指令）
+## 三、配置方案 A（AI 每日现写文案，可选）
+
+系统默认已内置 **方案 B（30 套三风格动态文案库）**，开箱即用；如果你想开启 **方案 A（AI 每天早上自动现写不重样文案，AI 不可用时自动降级到方案 B）**，只需在 GitHub 仓库里加一个 Secret：
+
+1. 打开仓库 **Settings → Secrets and variables → Actions → New repository secret**
+2. 添加 **`AI_API_KEY`**（支持 DeepSeek / 智谱 / 硅基流动 / 通义千问 / Google Gemini）
+3. 如使用非 DeepSeek 服务，再可选添加 **`AI_BASE_URL`** 和 **`AI_MODEL`**：
+   - **DeepSeek（默认）**：只需填 `AI_API_KEY`（默认 `https://api.deepseek.com/v1` + `deepseek-chat`）
+   - **Google Gemini**：`AI_BASE_URL` 填 `https://generativelanguage.googleapis.com`，`AI_MODEL` 填 `gemini-2.5-flash`
+   - **智谱 GLM**：`AI_BASE_URL` 填 `https://open.bigmodel.cn/api/paas/v4`，`AI_MODEL` 填 `glm-4-flash`
+
+---
+
+## 四、iPhone 11 / 14 / 17 桌面一键按钮配置（快捷指令）
 
 在苹果自带的 **「快捷指令」App** 中新建一个指令，命名为 **「发今日衣色」**，依次添加以下 **6 个动作**：
 
 1. **获取 URL 内容**
-   - URL 填：`https://<你的用户名>.github.io/yise-daily-poster/today.json`
-2. **获取词典值**
+   - URL 填：`https://kuin1993-cmyk.github.io/yise-daily-poster/today.json`
+2. **获取字典值**
    - 键（Key）：
-     - iPhone 14 填 `caption_14`
-     - iPhone 17 填 `caption_17`
-   - 词典：选择上一步的「URL 的内容」
+     - **iPhone 11（温柔闺蜜分享风）** 填：`caption_11`
+     - **iPhone 14（极简高级风）** 填：`caption_14`
+     - **iPhone 17（水晶手串软广风）** 填：`caption_17`
+   - 字典：自动连接第 1 步，不用改
 3. **拷贝至剪贴板**
-   - 拷贝内容：选择上一步的「词典值」
-4. **获取词典值**
-   - 键（Key）：填 `image_url`
-   - 词典：选择第 1 步的「URL 的内容」
-5. **获取 URL 内容**
-   - URL：选择上一步的「词典值」
-6. **存储到相簿**
-   - 存储对象：选择上一步的「URL 的内容」
-   - 目标相簿：选「最近项目」（或新建一个「每日衣色」相簿）
-7. **打开 App**（或 **打开 URL**：`weixin://`）
+   - 自动连接第 2 步，不用改
+4. **获取 URL 内容**
+   - URL 填：`https://kuin1993-cmyk.github.io/yise-daily-poster/today.jpg`
+5. **存储到“照片”相簿**
+   - 自动连接第 4 步，默认存到「最近项目」
+6. **打开 App**
    - App 选 **微信**
 
 ### 添加到桌面
