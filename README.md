@@ -41,7 +41,7 @@ node scripts/generate.mjs 2026-11-25
    - 今日海报：`https://<你的用户名>.github.io/yise-daily-poster/today.jpg`
    - 备用网页：`https://<你的用户名>.github.io/yise-daily-poster/`
 
-以后每天早上 **06:30（北京时间）** GitHub Actions 会自动更新当日海报和文案。
+以后每天凌晨 **00:30（北京时间）** GitHub Actions 会自动更新当日海报和文案，确保早上起床发朋友圈前早就准备好了。
 
 ---
 

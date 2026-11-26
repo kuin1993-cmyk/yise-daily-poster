@@ -4,8 +4,8 @@ on:
   push:
     branches: ['main']
   schedule:
-    # 每天 UTC 22:30 = 北京时间每天早上 06:30 自动出图
-    - cron: '30 22 * * *'
+    # 每天 UTC 16:30 = 北京时间每天凌晨 00:30 自动出图（避开早高峰排队，确保 07:30 前 100% 就绪）
+    - cron: '30 16 * * *'
   workflow_dispatch:
     inputs:
       date:
